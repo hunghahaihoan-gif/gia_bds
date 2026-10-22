@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Giá BDS tại Kim Long, Huế</title>
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <style>
+    body { margin: 0; padding: 0; display: flex; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; height: 100vh; overflow: hidden; background: #f4f4f4; }
+    .sidebar { width: 320px; padding: 20px; background: #fff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 10; }
+    .sidebar h2 { margin-top: 0; font-size: 20px; color: #d9534f; border-bottom: 2px solid #d9534f; padding-bottom: 10px; }
+    .layer-control label { display: block; padding: 10px 0; cursor: pointer; font-size: 15px; border-bottom: 1px solid #eee; }
+    #map { flex: 1; position: relative; }
+    
+    /* Bảng thông tin được tăng z-index cao nhất để luôn nổi lên trên */
+    .info-panel { position: absolute; top: 20px; right: -400px; width: 320px; background: rgba(255,255,255,0.95); padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: right 0.3s ease; max-height: 80vh; overflow-y: auto; z-index: 9999; }
+    .info-panel.active { right: 20px; }
+    .info-row { margin-bottom: 8px; font-size: 14px; border-bottom: 1px dashed #ddd; padding-bottom: 6px; }
+    .close-btn { position: absolute; top: 15px; right: 15px; cursor: pointer; color: #888; font-size: 20px; font-weight: bold; border: none; background: none; }
+    .close-btn:hover { color: #d9534f; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>Giá BDS tại Kim Long, Huế</h2>
+    <div class="layer-control">
+      <label><input type="checkbox" id="toggle-diem" checked> Điểm khảo sát (Đỏ)</label>
+      <label><input type="checkbox" id="toggle-quyhoach" checked> Điểm quy hoạch (Cam)</label>
+      <label><input type="checkbox" id="toggle-matnuoc" checked> Mặt nước (Xanh)</label>
+    </div>
+  </div>
+  
+  <!-- Thẻ bản đồ độc lập -->
+  <div id="map"></div>
+
+  <!-- Thẻ bảng thông tin được đưa ra ngoài -->
+  <div class="info-panel" id="infoPanel">
+    <button class="close-btn" onclick="document.getElementById('infoPanel').classList.remove('active')">×</button>
+    <h3 style="margin-top: 0; color: #d9534f; border-bottom: 1px solid #d9534f; padding-bottom: 8px;">Thông tin chi tiết</h3>
+    <div id="infoContent"></div>
+  </div>
+
+  <script>
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      center: [107.57, 16.47],
+      zoom: 14
+    });
+
+    map.on('load', () => {
+      const t = Date.now();
+      map.addSource('nguon-diem', { type: 'geojson', data: `diem_khaosat.geojson?t=${t}` });
+      map.addSource('nguon-quyhoach', { type: 'geojson', data: `quy_hoach.geojson?t=${t}` });
+      map.addSource('nguon-matnuoc', { type: 'geojson', data: `mat_nuoc.geojson?t=${t}` });
+
+      map.addLayer({ id: 'lop-matnuoc', type: 'fill', source: 'nguon-matnuoc', paint: { 'fill-color': '#a3c2ff', 'fill-opacity': 0.7 } });
+      map.addLayer({ id: 'lop-quyhoach', type: 'circle', source: 'nguon-quyhoach', paint: { 'circle-color': '#ff9900', 'circle-radius': 6, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' } });
+      map.addLayer({ id: 'lop-diem', type: 'circle', source: 'nguon-diem', paint: { 'circle-color': '#ff0000', 'circle-radius': 7, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#fff' } });
+
+      // Tính năng bật/tắt lớp
+      const toggleLayer = (checkboxId, layerId) => {
+        document.getElementById(checkboxId).addEventListener('change', e => {
+          map.setLayoutProperty(layerId, 'visibility', e.target.checked ? 'visible' : 'none');
+        });
+      };
+      toggleLayer('toggle-diem', 'lop-diem');
+      toggleLayer('toggle-quyhoach', 'lop-quyhoach');
+      toggleLayer('toggle-matnuoc', 'lop-matnuoc');
+
+      // Tách riêng sự kiện click cho từng lớp
+      const layers = ['lop-diem', 'lop-quyhoach', 'lop-matnuoc'];
+      
+      layers.forEach(layerId => {
+        map.on('click', layerId, (e) => {
+          // Lệnh in ra Console để kiểm tra lỗi
+          console.log('Bạn vừa click vào lớp:', layerId);
+          console.log('Dữ liệu lấy được:', e.features[0].properties);
+          
+          if (!e.features || e.features.length === 0) return;
+          const props = e.features[0].properties;
+          
+          let html = '';
+          for (const [key, value] of Object.entries(props)) {
+            html += `<div class="info-row"><strong>${key}:</strong> ${value || '<span style="color:#999;font-style:italic;">Trống</span>'}</div>`;
+          }
+          
+          if (html === '') {
+            html = '<div class="info-row">Điểm này trống trường dữ liệu.</div>';
+          }
+          
+          document.getElementById('infoContent').innerHTML = html;
+          document.getElementById('infoPanel').classList.add('active');
+        });
+        
+        // Cài đặt đổi con trỏ chuột thành hình bàn tay khi lướt qua điểm
+        map.on('mouseenter', layerId, () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', layerId, () => {
+          map.getCanvas().style.cursor = '';
+        });
+      });
+    });
+  </script>
+</body>
+</html>
